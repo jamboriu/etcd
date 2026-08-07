@@ -28,7 +28,8 @@ func TestConcurrentCompactionAndWatch(t *testing.T) {
 
 	_, err := store.watch([]byte("foo"), nil, 5, 1, ch)
 	if err == nil {
-		// If watch creation succeeded, syncWatchers should catch it if compaction has progressed
+		// Wait for compaction to complete
+		time.Sleep(20 * time.Millisecond)
 		store.syncWatchers()
 		select {
 		case resp := <-ch:

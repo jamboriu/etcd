@@ -66,6 +66,9 @@ func (s *watchableStore) watch(key, end []byte, startRev int64, id WatchID, ch c
 
 	s.store.Mu.Lock()
 	defer s.store.Mu.Unlock()
+	if s.store.onCompact == nil {
+		s.store.onCompact = s.cancelCompactedWatchers
+	}
 	if startRev != 0 && startRev <= s.store.compactMainRev {
 		return nil, ErrCompacted
 	}
@@ -77,6 +80,24 @@ func (s *watchableStore) watch(key, end []byte, startRev int64, id WatchID, ch c
 	}
 
 	return wa, nil
+}
+
+func (s *watchableStore) cancelCompactedWatchers(rev int64) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.store.Mu.Lock()
+	defer s.store.Mu.Unlock()
+
+	for w := range s.unsynced.watchers {
+		if w.minRev != 0 && w.minRev <= rev {
+			select {
+			case w.ch <- WatchResponse{WatchID: w.id, CompactRevision: rev}:
+			default:
+			}
+			delete(s.unsynced.watchers, w)
+		}
+	}
 }
 
 func (s *watchableStore) syncWatchers() int {
@@ -93,7 +114,7 @@ func (s *watchableStore) syncWatchers() int {
 	// In a real implementation, we would acquire a read transaction here.
 	// For the purpose of this fix, we check if the watcher's revision has been compacted.
 	for w := range s.unsynced.watchers {
-		if w.minRev <= s.store.compactMainRev {
+		if w.minRev != 0 && w.minRev <= s.store.compactMainRev {
 			select {
 			case w.ch <- WatchResponse{WatchID: w.id, CompactRevision: s.store.compactMainRev}:
 			default:
