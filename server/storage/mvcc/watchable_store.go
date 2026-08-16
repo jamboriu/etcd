@@ -111,8 +111,6 @@ func (s *watchableStore) syncWatchers() int {
 	s.store.Mu.Lock()
 	defer s.store.Mu.Unlock()
 
-	// In a real implementation, we would acquire a read transaction here.
-	// For the purpose of this fix, we check if the watcher's revision has been compacted.
 	for w := range s.unsynced.watchers {
 		if w.minRev != 0 && w.minRev <= s.store.compactMainRev {
 			select {
